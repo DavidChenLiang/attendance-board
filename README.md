@@ -95,3 +95,9 @@ Employees are treated under a single holiday rule set: every public holiday from
 ## Version
 
 Current: **v1.4.0** — see [CHANGELOG.md](CHANGELOG.md). The version lives in `attendance-logic.js` (`VERSION`) and is the single source shown on both builds.
+
+## License
+
+[MIT](LICENSE) © 2026 DavidChenLiang
+
+Free to use, copy and modify. Note that the holiday tables embedded in `attendance-logic.js` are factual data compiled from the official sources listed above — they are not subject to copyright here, but please verify against the official publications before relying on them.

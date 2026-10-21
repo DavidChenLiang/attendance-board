@@ -215,6 +215,20 @@ test("vanilla 版默认员工列表与 defaultEmployees() 完全一致", () => {
   eq(actual, expected, "vanilla 的默认员工应与逻辑层一致（当前：" + actual + "）");
 });
 
+console.log("开源就绪：LICENSE / 元信息一致");
+
+test("仓库含 MIT 许可证，且 package.json 与 README 口径一致", () => {
+  const lic = read("LICENSE");
+  ok(/MIT License/.test(lic), "LICENSE 应为 MIT 许可证文本");
+  ok(/Copyright \(c\) 2026 DavidChenLiang/.test(lic), "LICENSE 应含版权行");
+  ok(/WITHOUT WARRANTY OF ANY KIND/.test(lic), "LICENSE 应含标准免责声明（全文完整）");
+  const pkg = JSON.parse(read("package.json"));
+  eq(pkg.license, "MIT", "package.json 的 license 应为 MIT");
+  const doc = read("README.md");
+  ok(/^## License$/m.test(doc), "README 应有 License 章节");
+  ok(doc.includes("[MIT](LICENSE)"), "README 的 License 章节应链向 LICENSE 文件");
+});
+
 console.log("版本号：两版从逻辑层 VERSION 单一真相源读取");
 
 test("版本号为语义化 MAJOR.MINOR.PATCH", () => {
