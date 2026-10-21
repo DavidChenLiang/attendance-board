@@ -1,0 +1,24 @@
+{
+  "name": "attendance-board-react",
+  "private": true,
+  "version": "1.4.0",
+  "description": "员工假期考勤看板 - React 重写版（逻辑层与 Node 回归测试复用根目录 attendance-logic.js / attendance-logic.test.js）",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node attendance-logic.test.js && node attendance-ui.test.js",
+    "test:logic": "node attendance-logic.test.js",
+    "test:ui": "node attendance-ui.test.js"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^25.0.8",
+    "@vitejs/plugin-react": "^4.3.3",
+    "vite": "^5.4.10",
+    "vite-plugin-commonjs": "^0.10.4"
+  }
+}
