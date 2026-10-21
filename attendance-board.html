@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>员工假期考勤看板</title>
+<style>
+  :root {
+    --work: #2e9e5b;      /* 上班 绿 */
+    --leave: #9aa3ad;     /* 休假 灰 */
+    --sick: #ffffff;      /* 病假 白底 */
+    --sick-fg: #d12e2e;   /* 病假 红十字 红 */
+    --none: #ffffff;      /* 未设置 白 */
+    --pubhol: #e7def8;    /* 法定假 淡紫 */
+    --pubhol-fg: #3d2c5e; /* 法定假 深紫字 */
+    --border: #e2e6ea;
+    --head-bg: #f5f7fa;
+    --text: #1f2933;
+    --muted: #6b7280;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: var(--text);
+    background: #fafbfc;
+    /* 应用外壳：顶栏与底栏按内容高度，中间表格区独占滚动 */
+    display: flex; flex-direction: column; height: 100vh;
+  }
+  header {
+    flex: 0 0 auto;
+    padding: 14px 20px 16px;
+    background: #fff;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  header h1 { font-size: 18px; margin: 0; margin-right: auto; }
+  /* 版本号徽章：不额外占纵向空间，随标题同行显示 */
+  .ver {
+    display: inline-block; margin-left: 8px; padding: 1px 6px;
+    border: 1px solid var(--border); border-radius: 999px; background: #f5f7fa;
+    font-size: 11px; font-weight: 600; color: var(--muted);
+    font-variant-numeric: tabular-nums; vertical-align: 2px;
+  }
+  .ver-foot { margin-left: 8px; border: 0; background: transparent; padding: 0; }
+  /* 标题行：标题靠左，时钟与语言按钮靠右 */
+  .titlerow { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .toolbar + .toolbar, .titlerow + .toolbar { padding-top: 10px; border-top: 1px dashed var(--border); }
+  .palette { display: flex; flex-wrap: wrap; gap: 6px; }
+  .swatch {
+    display: flex; align-items: center; gap: 6px;
+    border: 2px solid var(--border); border-radius: 8px;
+    padding: 6px 10px; cursor: pointer; background: #fff;
+    font-size: 13px; user-select: none;
+  }
+  .swatch .dot { width: 16px; height: 16px; border-radius: 4px; }
+  /* 底部图例：色块更紧凑，少占纵向空间 */
+  .legend .swatch { padding: 4px 8px; font-size: 12px; border-width: 1px; }
+  .legend .swatch .dot { width: 13px; height: 13px; border-radius: 3px; }
+  .swatch.active { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,.15); }
+  .dot.work { background: var(--work); }
+  .dot.leave { background: var(--leave); }
+  .dot.leave_am, .dot.leave_pm { background: var(--leave); }   /* 与全天事假同色：整块灰 */
+  .dot.sick_am, .dot.sick_pm {
+    background: var(--sick); border: 1px solid var(--sick-fg);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .dot.sick_am::after, .dot.sick_pm::after { content: "✚"; color: var(--sick-fg); font-size: 11px; line-height: 1; font-weight: 700; }
+  .dot.sick {
+    background: var(--sick); border: 1px solid var(--sick-fg);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .dot.sick::after { content: "✚"; color: var(--sick-fg); font-size: 11px; line-height: 1; font-weight: 700; }
+  .dot.none { background: #fff; border: 1px solid #ccc; }
+  .dot.pubhol { background: var(--pubhol); }
+  button.btn {
+    border: 1px solid var(--border); background: #fff; color: var(--text);
+    border-radius: 8px; padding: 7px 12px; cursor: pointer; font-size: 13px;
+  }
+  button.btn:hover { background: #f0f4f8; }
+  button.btn.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+  .field { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+  input[type="text"], input[type="date"] {
+    border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 13px;
+  }
+  .board-wrap { padding: 16px 20px; overflow: auto; flex: 1 1 auto; min-height: 140px; }
+  table { border-collapse: separate; border-spacing: 0; background: #fff; }
+  th, td { border: 1px solid var(--border); }
+  thead th {
+    position: -webkit-sticky; position: sticky; top: 0; z-index: 3; background: var(--head-bg);
+    font-size: 12px; font-weight: 600; padding: 6px 8px; white-space: nowrap; text-align: center;
+    overflow: visible;
+  }
+  /* 日期表头：宽高固定（50px × 40px），与考勤格子对齐；节日文字改由悬停浮动窗口显示 */
+  thead th.hd { width: 50px; height: 40px; padding: 3px 2px; line-height: 1.3; }
+  thead th.corner { position: -webkit-sticky; position: sticky; left: 0; top: 0; z-index: 5; }
+  tbody th.emp {
+    position: -webkit-sticky; position: sticky; left: 0; z-index: 2; background: var(--head-bg);
+    font-size: 13px; padding: 0; white-space: nowrap; min-width: 140px;
+    box-shadow: 2px 0 4px -2px rgba(0,0,0,.18);
+  }
+  tbody th.emp .emp-inner {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 6px 10px;
+  }
+  .emp-name { cursor: pointer; }
+  .emp-del { color: #c0392b; cursor: pointer; font-size: 12px; opacity: .5; flex: 0 0 auto; }
+  .emp-del:hover { opacity: 1; }
+  td.cellwrap { width: 50px; height: 32px; padding: 0; }
+  select.cellsel {
+    width: 100%; height: 100%; border: none; outline: none; margin: 0;
+    -webkit-appearance: none; appearance: none;
+    text-align: center; text-align-last: center;
+    font-size: 12px; font-weight: 600; cursor: pointer; padding: 0 2px;
+  }
+  select.cellsel:hover { outline: 2px solid #2563eb; outline-offset: -2px; }
+  /* ---------- 操作说明：分条列出，条与条之间留白 ---------- */
+  .tiplist {
+    margin: 0; padding: 10px 12px 10px 28px;
+    border: 1px solid var(--border); border-radius: 8px; background: #fbfcfe;
+    font-size: 12px; color: var(--muted); line-height: 1.7;
+  }
+  .tiplist li + li { margin-top: 4px; }
+  .tiplist b { color: var(--text); }
+
+  /* ---------- 图例（页面底部，顶栏不再占用） ---------- */
+  .legend {
+    flex: 0 0 auto; background: #fff;
+    border-top: 1px solid var(--border); padding: 7px 20px;
+  }
+  /* ---------- 人员统计：默认折叠为一行合计条 ---------- */
+  .stats { flex: 0 0 auto; background: #fff; }
+  .statsbar {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    border: 0; background: transparent; cursor: pointer;
+    padding: 7px 20px; font-size: 12px; color: var(--muted); text-align: left;
+  }
+  .statsbar:hover { background: #f5f7fa; }
+  .statsbar .stats-title { font-weight: 700; color: var(--text); font-size: 13px; }
+  .statsbar .stats-total { flex: 1 1 auto; }
+  .statsbar .stats-arrow { transition: transform .15s ease; color: var(--muted); }
+  .statsbar.open .stats-arrow { transform: rotate(180deg); }
+
+  /* ---------- 汇总：展开后每人一张卡片，网格排布 ---------- */
+  .summary {
+    flex: 0 0 auto;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
+    gap: 10px; padding: 4px 20px 10px;
+  }
+  /* 折叠态不渲染卡片，容器整体隐藏（避免空 padding 占位） */
+  .summary:empty { display: none; }
+  .sum-card {
+    border: 1px solid var(--border); border-radius: 10px; background: #fff;
+    padding: 8px 10px;
+  }
+  .sum-name {
+    font-size: 13px; font-weight: 700; color: var(--text);
+    margin-bottom: 6px; padding-bottom: 5px; border-bottom: 1px solid var(--border);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .sum-nums { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; }
+  .sum-item {
+    flex: 1 1 78px; text-align: center;
+    border-radius: 6px; padding: 4px 2px; background: #f5f7fa;
+  }
+  .sum-item dt { font-size: 11px; color: var(--muted); }
+  .sum-item dd { margin: 2px 0 0; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .sum-item.is-work   { background: #e8f6ee; }
+  .sum-item.is-work dd   { color: var(--work); }
+  .sum-item.is-leave  { background: #eef1f4; }
+  .sum-item.is-leave dd  { color: #55606b; }
+  .sum-item.is-sick   { background: #fdecec; }
+  .sum-item.is-sick dd   { color: var(--sick-fg); }
+  .sum-item.is-pubhol { background: #f2edfb; }
+  .sum-item.is-pubhol dd { color: var(--pubhol-fg); }
+
+  /* 节假日数据来源说明（页脚小字） */
+  .datasource {
+    flex: 0 0 auto;
+    font-size: 11px; color: var(--muted); padding: 8px 20px 14px; line-height: 1.5;
+    border-top: 1px dashed var(--border);
+  }
+
+  /* 周末底纹 + 法定节假日 / 调休底色（仅日历周模式可见周末底纹；工作日模式仅显示周内的节假日） */
+  thead th.holiday { background: #fdecec; }
+  thead th.makeup  { background: #fff6e0; }
+  thead th.weekend { background: #f0f3f7; }
+  /* 仅瑞典国定假期：日期表头着瑞典国旗配色（蓝底 #006AA7 + 黄十字 #FFCD00） */
+  thead th.seflag {
+    background-color: #006AA7;
+    background-image:
+      linear-gradient(#FFCD00, #FFCD00),
+      linear-gradient(#FFCD00, #FFCD00);
+    background-repeat: no-repeat;
+    background-size: 6px 100%, 100% 6px;
+    background-position: 15px center, center 19px;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,.45);
+  }
+  /* 今天所在列高亮（蓝环），无论该列是否为节假日底色都清晰可见 */
+  thead th.today { box-shadow: inset 0 0 0 2px #2563eb; }
+  select.cellsel.today { outline: 2px solid #2563eb; outline-offset: -2px; }
+  /* 瑞典国定假期：网格不做特殊处理（仅表头国旗配色 + 悬停提示） */
+  /* 节日名称不再内联显示（避免撑高表头），改为鼠标悬停浮动窗口提示（见 #tipFloat） */
+  /* 空白格按列类型着底纹色（覆盖默认白），填色后由内联样式恢复状态色 */
+  #tipFloat {
+    position: fixed; z-index: 50; display: none; pointer-events: none;
+    background: #1f2933; color: #fff; font-size: 11px; line-height: 1.45;
+    padding: 6px 9px; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.25);
+    max-width: 220px; white-space: normal; text-align: left;
+  }
+  #tipFloat b { color: #fff; }
+  select.cellsel[data-coltype="weekend"] { background: #f0f3f7; }
+  select.cellsel[data-coltype="holiday"] { background: #fdecec; }
+  select.cellsel[data-coltype="makeup"]  { background: #fff6e0; }
+  /* 瑞典国定假期(se)：仅表头蓝标，下方格子不着色（保持原色），故此处不设置背景 */
+
+  /* ---------- 实时时钟（中国 / 瑞典）---------- */
+  .clocks { display: flex; gap: 10px; }
+  .clock {
+    display: flex; align-items: center; gap: 6px;
+    border: 1px solid var(--border); border-radius: 8px; padding: 5px 10px;
+    background: #fff; font-size: 13px;
+  }
+  .clock .flag { font-size: 15px; line-height: 1; }
+  .clock .cname { color: var(--muted); }
+  /* tabular-nums：等宽数字，避免秒数跳动时宽度抖动 */
+  .clock .ctime { font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+  /* 24 小时制标注 */
+  .clocks .c24 { align-self: center; font-size: 11px; color: var(--muted); border: 1px dashed var(--border); border-radius: 6px; padding: 3px 6px; }
+
+  /* ---------- 批量框选标记 ---------- */
+  #board.selecting { cursor: crosshair; user-select: none; }
+  #board.selecting select.cellsel { pointer-events: none; }
+  select.cellsel.sel { outline: 2px dashed #111827; outline-offset: -2px; }
+  .selbar {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: 18px; z-index: 60;
+    background: #fff; border: 1px solid var(--border); border-radius: 10px;
+    padding: 8px 12px; box-shadow: 0 6px 24px rgba(0,0,0,.18);
+    display: flex; align-items: center; gap: 8px; font-size: 13px; flex-wrap: wrap; max-width: 92vw;
+  }
+  .selbar b { color: var(--text); }
+  .selbar .btn { font-weight: 600; }
+</style>
+</head>
+<body>
+<header>
+  <div class="titlerow">
+    <h1><span id="title">员工假期考勤看板</span><span class="ver" id="ver"></span></h1>
+    <div class="clocks" id="clocks"></div>
+    <button class="btn" id="langToggle">EN</button>
+  </div>
+  <div class="toolbar">
+    <div class="field"><input type="text" id="newEmp" placeholder="员工姓名" style="width:110px"></div>
+    <button class="btn" id="addEmp">+ 添加员工</button>
+    <div class="field"><span id="lblStart">起始</span> <input type="date" id="dateStart"></div>
+    <div class="field"><span id="lblDays">天数</span> <input type="number" id="dateDays" value="14" min="1" max="365" style="width:60px"></div>
+    <button class="btn" id="genDates">生成日期列</button>
+    <button class="btn primary" id="goToday">回到今天</button>
+    <label class="field"><input type="checkbox" id="wdOnly" checked> <span id="lblWdOnly">仅工作日（隐藏周末）</span></label>
+  </div>
+  <div class="toolbar">
+    <button class="btn" id="selModeBtn">框选模式</button>
+    <button class="btn" id="clearAll">重置为工作日</button>
+    <button class="btn" id="resetAll">重置看板</button>
+    <button class="btn" id="exportCsv">导出 CSV</button>
+  </div>
+  <!-- 操作说明：分条列出，避免一整段文字连在一起 -->
+  <ul class="tiplist" id="tipText"></ul>
+</header>
+
+<div class="board-wrap">
+  <table id="board"></table>
+</div>
+<!-- 图例移到页面底部：顶栏只留操作区，视觉重心全给矩阵 -->
+<div class="legend">
+  <div class="palette" id="palette"></div>
+</div>
+<div class="stats">
+  <button class="statsbar" id="statsBar" aria-expanded="false">
+    <span class="stats-title" id="statsTitle">人员统计</span>
+    <span class="stats-total" id="statsTotal"></span>
+    <span class="stats-arrow" aria-hidden="true">▾</span>
+  </button>
+  <div class="summary" id="summary"></div>
+</div>
+<div class="datasource"><span id="dataSource"></span><span class="ver ver-foot" id="verFoot"></span></div>
+<div class="selbar" id="selbar" style="display:none"></div>
+<div id="tipFloat"></div>
+
+<script src="attendance-logic.js"></script>
+<script>
+const STORE_KEY = "attendance-board-v1";
+const LOCALE_KEY = "attendance-board-locale";   // 语言偏好（与 React 版共用）
+const STATS_KEY = "attendance-board-stats";     // 人员统计展开状态（"1" = 展开，默认折叠，与 React 版共用）
+const OPTION_KEYS = ["", "work", "leave", "leave_am", "leave_pm", "sick", "sick_am", "sick_pm", "pubhol"];
+let state = { employees: [], dates: [], cells: {}, workdaysOnly: true };
+
+// ---------- 语言（中 / 英一键切换）----------
+let locale = "zh";
+try { locale = localStorage.getItem(LOCALE_KEY) === "en" ? "en" : "zh"; } catch(e) {}
+function t() { return I18N[locale].ui; }
+
+// ---------- 实时时钟（中国 / 瑞典，每秒刷新）----------
+function renderClocks() {
+  const now = new Date();
+  const LI = I18N[locale];
+  const zones = [
+    { flag: "🇨🇳", name: LI.country.CN, tz: TZ.CN },
+    { flag: "🇸🇪", name: LI.country.SE, tz: TZ.SE },
+  ];
+  const T = t();
+  document.getElementById("clocks").innerHTML = zones.map(z => {
+    const off = tzOffsetHours(now, z.tz);
+    const sign = off >= 0 ? "+" : "";
+    return `<div class="clock" title="${escapeHtml(T.clock24)} · UTC${sign}${off}"><span class="flag">${z.flag}</span>`
+      + `<span class="cname">${escapeHtml(z.name)}</span>`
+      + `<span class="ctime">${clockText(now, z.tz)}</span></div>`;
+  }).join("") + `<span class="c24" title="${escapeHtml(T.clock24)}">${escapeHtml(T.clock24)}</span>`;
+}
+setInterval(renderClocks, 1000);
+
+// ---------- 批量框选 ----------
+// 人员统计默认折叠：把视觉空间留给矩阵
+let statsOpen = false;
+try { statsOpen = localStorage.getItem(STATS_KEY) === "1"; } catch(e) {}
+
+let selMode = false;        // 框选模式
+let selection = null;       // { r0, c0, r1, c1 }
+let dragStart = null;       // 拖拽起点
+let anchor = null;          // Shift 批量选区的锚点 { r, c }
+function normRect(s) {
+  return {
+    ra: Math.min(s.r0, s.r1), rb: Math.max(s.r0, s.r1),
+    ca: Math.min(s.c0, s.c1), cb: Math.max(s.c0, s.c1),
+  };
+}
+
+function load() {
+  const raw = localStorage.getItem(STORE_KEY);
+  if (raw) { try { state = JSON.parse(raw); } catch(e){} }
+  if (typeof state.workdaysOnly !== "boolean") state.workdaysOnly = true;
+  if (!state.employees.length) {
+    state.employees = ["张三 Zhang", "李四 Li", "王五 Wang", "周八 Zhou", "赵六 Zhao", "Emily Liu", "孙七 Sun", "Michael Wu"];
+    state.dates = genDates(toISO(new Date()), 14, state.workdaysOnly);
+    state.cells = {};
+  }
+}
+function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+
+// 以下纯逻辑（toISO / genDates / cellKey / COLORS / extendLeft / rebuildDates / ...）已抽离至 attendance-logic.js，作为全局函数直接使用
+
+function paintSelect(sel) {
+  const ct = sel.getAttribute("data-coltype") || "";
+  const s = paintSelectStyle(sel.value, ct);
+  sel.style.background = s.bg;
+  sel.style.color = s.fg;
+}
+
+// 应用当前语言的全部界面文案（语言切换后重新渲染即可）
+function applyI18n() {
+  const T = t();
+  document.getElementById("title").textContent = T.title;
+  document.getElementById("ver").textContent = "v" + VERSION;
+  document.getElementById("verFoot").textContent = "v" + VERSION;
+  document.getElementById("langToggle").textContent = T.langBtn;
+  document.getElementById("newEmp").placeholder = T.empName;
+  document.getElementById("addEmp").textContent = T.addEmp;
+  document.getElementById("lblStart").textContent = T.start;
+  document.getElementById("lblDays").textContent = T.days;
+  document.getElementById("genDates").textContent = T.generate;
+  document.getElementById("goToday").textContent = T.goToday;
+  document.getElementById("lblWdOnly").textContent = T.workdaysOnly;
+  document.getElementById("selModeBtn").textContent = selMode ? T.selectModeOn : T.selectMode;
+  document.getElementById("clearAll").textContent = T.resetWork;
+  document.getElementById("resetAll").textContent = T.resetBoard;
+  document.getElementById("exportCsv").textContent = T.exportCsv;
+  document.getElementById("tipText").innerHTML = T.tips.map(s => `<li>${s}</li>`).join("");
+  document.getElementById("dataSource").textContent = T.dataSource;
+  renderClocks();   // 切换语言时同步刷新时钟上的国家名
+  // 图例按当前语言重建
+  document.getElementById("palette").innerHTML = OPTION_KEYS.map(v =>
+    `<div class="swatch" data-state="${v}"><span class="dot ${v === "" ? "none" : v}"></span>${escapeHtml(statusText(v, locale, "full"))}</div>`
+  ).join("");
+}
+
+function render() {
+  const board = document.getElementById("board");
+  // 任何重渲染（日期/员工变化）都清空选区，避免行列索引错位
+  selection = null; dragStart = null; anchor = null;
+  board.className = selMode ? "selecting" : "";
+  board.innerHTML = buildBoardHtml(state, toISO(new Date()), locale);
+  board.querySelectorAll("select.cellsel").forEach(paintSelect);
+  bindCells();
+  renderSummary();
+  applyI18n();
+  renderSelbar();
+}
+
+function bindCells() {
+  // 批量框选：按 行/列 索引绑定拖拽选区（Ctrl 保留给平移，故此处跳过）
+  document.querySelectorAll("#board tbody tr").forEach((tr, r) => {
+    tr.querySelectorAll("td.cellwrap").forEach((td, c) => {
+      td.addEventListener("mousedown", (e) => {
+        if (e.ctrlKey) return;                          // Ctrl 保留给平移
+        const shiftBatch = e.shiftKey && !selMode;      // 按住 Shift：无需进入框选模式
+        if (!selMode && !shiftBatch) return;            // 普通点击交给下拉
+        e.preventDefault();                             // 阻止下拉展开与 Shift 拖选文本
+        if (shiftBatch) {
+          if (!anchor) anchor = { r, c };               // 首次 Shift 点击 = 锚点
+          dragStart = { r0: anchor.r, c0: anchor.c };    // 支持继续 Shift+拖动扩展
+          selection = { r0: anchor.r, c0: anchor.c, r1: r, c1: c };
+        } else {
+          dragStart = { r0: r, c0: c };
+          selection = { r0: r, c0: c, r1: r, c1: c };
+          anchor = { r, c };
+        }
+        paintSelection(); renderSelbar();
+      });
+      td.addEventListener("mouseenter", () => {
+        if (!dragStart) return;
+        selection = { r0: dragStart.r0, c0: dragStart.c0, r1: r, c1: c };
+        paintSelection(); renderSelbar();
+      });
+    });
+  });
+  document.querySelectorAll("select.cellsel").forEach(sel => {
+    sel.addEventListener("change", () => {
+      const emp = sel.getAttribute("data-emp");
+      const iso = sel.getAttribute("data-iso");
+      state.cells[cellKey(emp, iso)] = sel.value;
+      paintSelect(sel);
+      renderSummary();
+      save();
+    });
+  });
+  document.querySelectorAll(".emp-del").forEach((el, i) => {
+    el.addEventListener("click", () => {
+      const emp = state.employees[i];
+      if (confirm(t().confirmDel(emp))) {
+        state.employees = state.employees.filter(e => e !== emp);
+        Object.keys(state.cells).forEach(k => { if (k.startsWith(emp+"|")) delete state.cells[k]; });
+        save(); render();
+      }
+    });
+  });
+  document.querySelectorAll(".emp-name").forEach((el, i) => {
+    el.addEventListener("click", () => {
+      const old = state.employees[i];
+      const nv = prompt(t().promptRename, old);
+      if (nv && nv.trim() && nv !== old) {
+        const newn = nv.trim();
+        state.employees[i] = newn;
+        Object.keys(state.cells).forEach(k => {
+          if (k.startsWith(old+"|")) { state.cells[newn+"|"+k.slice(old.length+1)] = state.cells[k]; delete state.cells[k]; }
+        });
+        save(); render();
+      }
+    });
+  });
+}
+// 人员统计：常显全员合计；折叠时不渲染每人卡片，把空间留给矩阵
+function renderSummary() {
+  const T = t();
+  const tot = computeTotals(state.employees, state.dates, state.cells);
+  document.getElementById("statsTitle").textContent = T.stats;
+  document.getElementById("statsTotal").textContent = T.summary(tot.work, tot.leave, tot.sick, tot.pubhol);
+  const bar = document.getElementById("statsBar");
+  bar.className = "statsbar" + (statsOpen ? " open" : "");
+  bar.setAttribute("aria-expanded", statsOpen ? "true" : "false");
+  bar.title = statsOpen ? T.statsCollapse : T.statsExpand;
+
+  const box = document.getElementById("summary");
+  if (!statsOpen) { box.innerHTML = ""; return; }   // 折叠态留空，容器由 .summary:empty 隐藏
+  box.innerHTML = computeSummary(state.employees, state.dates, state.cells).map(s =>
+    `<div class="sum-card">`
+    + `<div class="sum-name">${escapeHtml(s.emp)}</div>`
+    + `<dl class="sum-nums">`
+    + `<div class="sum-item is-work"><dt>${escapeHtml(T.sumLabel.work)}</dt><dd>${s.work}</dd></div>`
+    + `<div class="sum-item is-leave"><dt>${escapeHtml(T.sumLabel.leave)}</dt><dd>${s.leave}</dd></div>`
+    + `<div class="sum-item is-sick"><dt>${escapeHtml(T.sumLabel.sick)}</dt><dd>${s.sick}</dd></div>`
+    + `<div class="sum-item is-pubhol"><dt>${escapeHtml(T.sumLabel.pubhol)}</dt><dd>${s.pubhol}</dd></div>`
+    + `</dl></div>`
+  ).join("");
+}
+
+// ---------- 批量框选：选区高亮 / 浮动操作条 / 应用 ----------
+function paintSelection() {
+  const rect = selection ? normRect(selection) : null;
+  document.querySelectorAll("#board tbody tr").forEach((tr, r) => {
+    tr.querySelectorAll("td.cellwrap select").forEach((sel, c) => {
+      const on = !!rect && r >= rect.ra && r <= rect.rb && c >= rect.ca && c <= rect.cb;
+      sel.classList.toggle("sel", on);
+    });
+  });
+}
+function renderSelbar() {
+  const bar = document.getElementById("selbar");
+  if (!selection) { bar.style.display = "none"; bar.innerHTML = ""; return; }
+  const T = t(), { ra, rb, ca, cb } = normRect(selection);
+  const nEmp = rb - ra + 1, nDay = cb - ca + 1;
+  bar.style.display = "flex";
+  bar.innerHTML =
+    `<span>${escapeHtml(T.selected(nEmp * nDay, nEmp, nDay, state.dates[ca], state.dates[cb]))}</span>` +
+    OPTION_KEYS.map(v => {
+      const c = COLORS[v];
+      return `<button class="btn" data-apply="${v}" style="background:${c.bg};color:${v === "" ? "#1f2933" : c.fg};border-color:#cbd5e1">${escapeHtml(statusText(v, locale, "full"))}</button>`;
+    }).join("") +
+    `<button class="btn" data-apply-cancel="1">${escapeHtml(T.cancel)}</button>`;
+  bar.querySelectorAll("[data-apply]").forEach(b => {
+    b.addEventListener("click", () => applyToSelection(b.getAttribute("data-apply")));
+  });
+  bar.querySelector("[data-apply-cancel]").addEventListener("click", () => {
+    selection = null; anchor = null; paintSelection(); renderSelbar();
+  });
+}
+function applyToSelection(val) {
+  if (!selection) return;
+  const { ra, rb, ca, cb } = normRect(selection);
+  for (let r = ra; r <= rb; r++) {
+    for (let c = ca; c <= cb; c++) {
+      const emp = state.employees[r], iso = state.dates[c];
+      if (emp === undefined || iso === undefined) continue;
+      state.cells[cellKey(emp, iso)] = val;
+    }
+  }
+  selection = null; anchor = null; save(); render();
+}
+
+// 将指定日期列滚动到视口水平中心（用于「回到今天」）
+function scrollToDate(iso) {
+  const wrap = document.querySelector(".board-wrap");
+  const board = document.getElementById("board");
+  const idx = state.dates.indexOf(iso);
+  if (idx < 0) return;
+  const empTh = board.querySelector("tbody th.emp");
+  const empW = empTh ? empTh.offsetWidth : 140;
+  const cell = board.querySelector("td.cellwrap");
+  const colW = cell ? cell.offsetWidth : 50;
+  const centerX = empW + idx * colW + colW / 2;
+  const target = centerX - wrap.clientWidth / 2;
+  wrap.scrollLeft = Math.max(0, Math.min(target, wrap.scrollWidth - wrap.clientWidth));
+}
+
+// 顶部色块仅作图例展示，不再用于选色（颜色在格子内下拉选择）
+document.getElementById("addEmp").addEventListener("click", () => {
+  const inp = document.getElementById("newEmp");
+  const v = inp.value.trim();
+  if (v && !state.employees.includes(v)) { state.employees.push(v); save(); render(); inp.value=""; }
+  else if (state.employees.includes(v)) alert(t().empExists);
+});
+// 人员统计：点击合计条展开 / 收起每人卡片
+document.getElementById("statsBar").addEventListener("click", () => {
+  statsOpen = !statsOpen;
+  try { localStorage.setItem(STATS_KEY, statsOpen ? "1" : "0"); } catch(e) {}
+  renderSummary();
+});
+// 中 / 英一键切换
+document.getElementById("langToggle").addEventListener("click", () => {
+  locale = (locale === "zh") ? "en" : "zh";
+  try { localStorage.setItem(LOCALE_KEY, locale); } catch(e) {}
+  render();
+});
+// 框选模式开关
+document.getElementById("selModeBtn").addEventListener("click", () => {
+  selMode = !selMode;
+  document.getElementById("selModeBtn").className = "btn" + (selMode ? " primary" : "");
+  render();
+});
+// Esc：清空选区并退出框选
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") { selection = null; selMode = false; dragStart = null; anchor = null; render(); }
+});
+window.addEventListener("mouseup", () => { dragStart = null; });
+document.getElementById("genDates").addEventListener("click", () => {
+  const start = document.getElementById("dateStart").value;
+  const days = parseInt(document.getElementById("dateDays").value) || 14;
+  if (!start) { alert(t().alertStart); return; }
+  state.dates = genDates(start, days, state.workdaysOnly);
+  // 清理过期/不存在日期的格子
+  const valid = new Set(state.dates);
+  Object.keys(state.cells).forEach(k => { if (!valid.has(k.split("|")[1])) delete state.cells[k]; });
+  save(); render();
+});
+document.getElementById("wdOnly").addEventListener("change", e => {
+  state.workdaysOnly = e.target.checked;
+  rebuildDates(state);
+  save(); render();
+});
+// 回到今天：以今天为中心、左右对称重建日期区间，铺满视口宽度并居中滚动
+document.getElementById("goToday").addEventListener("click", () => {
+  const today = toISO(new Date());
+  const wrap = document.querySelector(".board-wrap");
+  const board = document.getElementById("board");
+  // 用当前已渲染表格测量列宽，确保生成的对称区间能填满视口（宁可略溢出也不留空白）
+  const empTh = board.querySelector("tbody th.emp");
+  const empW = empTh ? empTh.offsetWidth : 140;
+  const cell = board.querySelector("td.cellwrap");
+  const colW = cell ? cell.offsetWidth : 50;
+  const total = parseInt(document.getElementById("dateDays").value) || 14;
+  const baseHalf = Math.max(1, Math.floor(total / 2));
+  const colsNeeded = Math.ceil((wrap.clientWidth - empW) / colW) || 1;
+  const half = Math.max(baseHalf, Math.ceil((colsNeeded - 1) / 2) + 1); // +1 保证填满
+  state.dates = genDatesAround(today, half, state.workdaysOnly);
+  const valid = new Set(state.dates);
+  Object.keys(state.cells).forEach(k => { if (!valid.has(k.split("|")[1])) delete state.cells[k]; });
+  document.getElementById("dateStart").value = today;
+  save(); render();
+  scrollToDate(today);
+});
+document.getElementById("clearAll").addEventListener("click", () => {
+  if (confirm(t().confirmClear)) { state.cells = {}; save(); render(); }
+});
+document.getElementById("exportCsv").addEventListener("click", () => {
+  const csv = buildCsv(state.employees, state.dates, state.cells, locale);
+  const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = t().csvName + toISO(new Date()) + ".csv";
+  a.click();
+});
+document.getElementById("resetAll").addEventListener("click", () => {
+  if (confirm(t().confirmReset)) {
+    localStorage.removeItem(STORE_KEY);
+    state = { employees: [], dates: [], cells: {}, workdaysOnly: true };
+    load(); render();
+    document.getElementById("wdOnly").checked = state.workdaysOnly;
+  }
+});
+
+// 浮动提示：鼠标悬停带 data-iso 的格子（日期表头或考勤格）时，显示该日日期与节日名称
+const tipFloat = document.getElementById("tipFloat");
+function showTip(iso, x, y) {
+  const LI = I18N[locale];
+  const wd = weekdayText(iso, locale);
+  const ents = holidayEntries(iso, locale);
+  let html = `<b>${iso.slice(5)} ${wd}</b>`;
+  if (ents.length) {
+    html += "<br>" + ents.map(e => {
+      const pre = e.type === "makeup" ? LI.makeupPrefix : (LI.country[e.country] || e.country);
+      return `${escapeHtml(pre)}: ${escapeHtml(e.name)}`;
+    }).join("<br>");
+  } else {
+    html += `<br><span style='opacity:.7'>${escapeHtml(LI.noMark)}</span>`;
+  }
+  tipFloat.innerHTML = html;
+  tipFloat.style.display = "block";
+  tipFloat.style.left = (x + 14) + "px";
+  tipFloat.style.top = (y + 14) + "px";
+}
+function hideTip() { tipFloat.style.display = "none"; }
+document.addEventListener("mouseover", e => {
+  const el = e.target.closest("[data-iso]");
+  if (el) showTip(el.getAttribute("data-iso"), e.clientX, e.clientY);
+  else hideTip();
+});
+document.addEventListener("mousemove", e => {
+  if (tipFloat.style.display === "block") {
+    tipFloat.style.left = (e.clientX + 14) + "px";
+    tipFloat.style.top = (e.clientY + 14) + "px";
+  }
+});
+document.addEventListener("mouseout", e => {
+  const to = e.relatedTarget;
+  if (!to || !to.closest || !to.closest("[data-iso]")) hideTip();
+});
+
+// 默认起始日期填今天
+document.getElementById("dateStart").value = toISO(new Date());
+
+// Ctrl + 在表盘区域拖动 → 横向按日期滚动（日期与网格一起平移）；拖到边缘自动向前/后延展日期区间
+(function setupPan() {
+  const wrap = document.querySelector(".board-wrap");
+  const board = document.getElementById("board");
+  let panning = false, startX = 0, startScroll = 0, lastX = 0, extending = false;
+  const EXTEND = 14; // 每次延展的天数
+
+  function colW() {
+    const c = board.querySelector("td.cellwrap");
+    return c ? c.getBoundingClientRect().width : 50;
+  }
+  function maybeExtend() {
+    if (extending) return;
+    const cw = colW();
+    const maxScroll = wrap.scrollWidth - wrap.clientWidth;
+    if (wrap.scrollLeft <= cw * 1.5 && state.dates.length) {
+      // 向左拖到头 → 向前（更早）延展
+      extending = true;
+      const prev = wrap.scrollLeft;
+      state.dates = extendLeft(state.dates, state.workdaysOnly, EXTEND);
+      save(); render();
+      wrap.scrollLeft = prev + EXTEND * cw;   // 保持原日期视图不动
+      startScroll = wrap.scrollLeft; startX = lastX;
+      extending = false;
+    } else if (maxScroll > 0 && wrap.scrollLeft >= maxScroll - cw * 1.5) {
+      // 向右拖到头 → 向后（更晚）延展
+      extending = true;
+      state.dates = extendRight(state.dates, state.workdaysOnly, EXTEND);
+      save(); render();
+      startScroll = wrap.scrollLeft; startX = lastX;
+      extending = false;
+    }
+  }
+  wrap.addEventListener("mousedown", e => {
+    if (!e.ctrlKey) return;                 // 仅 Ctrl+拖动 才平移
+    if (e.target.closest("th.emp")) return; // 员工列不参与平移
+    panning = true; lastX = startX = e.clientX; startScroll = wrap.scrollLeft;
+    wrap.style.cursor = "grabbing";
+    e.preventDefault();                     // 阻止 Ctrl+拖 时的文本选中
+  });
+  window.addEventListener("mousemove", e => {
+    if (!panning) return;
+    lastX = e.clientX;
+    wrap.scrollLeft = startScroll - (e.clientX - startX);
+    maybeExtend();
+  });
+  window.addEventListener("mouseup", () => {
+    if (!panning) return;
+    panning = false; wrap.style.cursor = "";
+  });
+  wrap.addEventListener("scroll", maybeExtend, { passive: true });
+})();
+
+load();
+render();
+document.getElementById("wdOnly").checked = state.workdaysOnly;
+</script>
+</body>
+</html>
